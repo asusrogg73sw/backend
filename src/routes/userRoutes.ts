@@ -15,17 +15,53 @@ import { loginSchema, registerSchema } from '../validations/userValidation';
 
 const router = Router();
 
-// Public
+/* ======================================================
+   PUBLIC ROUTES
+   ====================================================== */
+
+// @route   POST /api/users
+// @desc    Register new user
+// @access  Public
 router.post('/', validate(registerSchema), registerUser);
+
+// @route   POST /api/users/login
+// @desc    Login user & get token
+// @access  Public
 router.post('/login', validate(loginSchema), authUser);
 
-// User Profile
+
+/* ======================================================
+   AUTHENTICATED USER ROUTES
+   ====================================================== */
+
+// @route   GET /api/users/profile
+// @desc    Get logged-in user's profile
+// @access  Private
 router.get('/profile', protect, getUserProfile);
+
+// @route   PUT /api/users/profile
+// @desc    Update logged-in user's profile
+// @access  Private
 router.put('/profile', protect, updateUserProfile);
 
-// Admin Only
+
+/* ======================================================
+   ADMIN ROUTES
+   ====================================================== */
+
+// @route   GET /api/users
+// @desc    Get all users
+// @access  Admin
 router.get('/', protect, admin, getUsers);
+
+// @route   DELETE /api/users/:id
+// @desc    Delete user by ID
+// @access  Admin
 router.delete('/:id', protect, admin, deleteUser);
-router.put('/:id', protect, admin, updateUserByAdmin); // 👈 Admin update
+
+// @route   PUT /api/users/:id
+// @desc    Update user by ID (Admin can change isAdmin)
+// @access  Admin
+router.put('/:id', protect, admin, updateUserByAdmin);
 
 export default router;

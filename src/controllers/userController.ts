@@ -3,18 +3,16 @@ import User, { IUser } from '../models/userModel';
 import asyncHandler from '../middlewares/asyncHandler';
 import generateToken from '../utils/generateToken';
 
-// =======================
-// Custom request type for authenticated routes
-// =======================
+// Custom Request type
 export interface AuthRequest extends Request {
   user?: IUser;
 }
 
 // =======================
-// 📌 Register User
+// Register User
 // =======================
 export const registerUser = asyncHandler(async (req: Request, res: Response) => {
-  const { name, email, password, age, isAdmin } = req.body;
+  const { name, email, password, age } = req.body;
 
   const userExists = await User.findOne({ email });
   if (userExists) {
@@ -22,7 +20,8 @@ export const registerUser = asyncHandler(async (req: Request, res: Response) => 
     throw new Error('User already exists');
   }
 
-  const user = await User.create({ name, email, password, age, isAdmin });
+  // 👈 Always force new users to be non-admin
+  const user = await User.create({ name, email, password, age, isAdmin: false });
 
   res.status(201).json({
     _id: user._id,
@@ -34,7 +33,7 @@ export const registerUser = asyncHandler(async (req: Request, res: Response) => 
 });
 
 // =======================
-// 📌 Authenticate User / Login
+// Login User
 // =======================
 export const authUser = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;
@@ -57,22 +56,7 @@ export const authUser = asyncHandler(async (req: Request, res: Response) => {
 });
 
 // =======================
-// 📌 Get All Users (Admin Only)
-// =======================
-export const getUsers = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const users = await User.find({}).select('-password');
-  const safeUsers = users.map(u => ({
-    _id: u._id,
-    name: u.name,
-    email: u.email,
-    age: u.age,
-    isAdmin: u.isAdmin,
-  }));
-  res.json(safeUsers);
-});
-
-// =======================
-// 📌 Get User Profile
+// Get Own Profile
 // =======================
 export const getUserProfile = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.user) {
@@ -80,23 +64,17 @@ export const getUserProfile = asyncHandler(async (req: AuthRequest, res: Respons
     throw new Error('Not authenticated');
   }
 
-  const user = await User.findById(req.user._id).select('-password');
-  if (!user) {
-    res.status(404);
-    throw new Error('User not found');
-  }
-
   res.json({
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-    age: user.age,
-    isAdmin: user.isAdmin,
+    _id: req.user._id,
+    name: req.user.name,
+    email: req.user.email,
+    age: req.user.age,
+    isAdmin: req.user.isAdmin,
   });
 });
 
 // =======================
-// 📌 Update User Profile
+// Update Own Profile
 // =======================
 export const updateUserProfile = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.user) {
@@ -110,6 +88,15 @@ export const updateUserProfile = asyncHandler(async (req: AuthRequest, res: Resp
     throw new Error('User not found');
   }
 
+  // 🔥 ADD THIS BLOCK HERE
+if (req.body.email && req.body.email !== user.email) {
+  const emailExists = await User.findOne({ email: req.body.email });
+  if (emailExists) {
+    res.status(400);
+    throw new Error("Email already in use");
+  }
+}
+
   user.name = req.body.name ?? user.name;
   user.email = req.body.email ?? user.email;
   user.age = req.body.age ?? user.age;
@@ -117,6 +104,9 @@ export const updateUserProfile = asyncHandler(async (req: AuthRequest, res: Resp
   if (req.body.password) {
     user.password = req.body.password; // hashed via pre-save hook
   }
+
+  // 🚫 Never allow normal user to change isAdmin
+  // user.isAdmin = req.body.isAdmin ?? user.isAdmin; // REMOVE
 
   const updatedUser = await user.save();
 
@@ -130,11 +120,28 @@ export const updateUserProfile = asyncHandler(async (req: AuthRequest, res: Resp
 });
 
 // =======================
-// 📌 Delete User (Admin Only)
+// Admin: Get All Users
 // =======================
-export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
-  const user = await User.findById(req.params.id);
+export const getUsers = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user?.isAdmin) {
+    res.status(403);
+    throw new Error('Access denied, admin only');
+  }
 
+  const users = await User.find({}).select('-password');
+  res.json(users);
+});
+
+// =======================
+// Admin: Delete User
+// =======================
+export const deleteUser = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user?.isAdmin) {
+    res.status(403);
+    throw new Error('Access denied, admin only');
+  }
+
+  const user = await User.findById(req.params.id);
   if (!user) {
     res.status(404);
     throw new Error('User not found');
@@ -145,15 +152,27 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
 });
 
 // =======================
-// 📌 Update User by Admin
+// Admin: Update User (can change isAdmin)
 // =======================
-export const updateUserByAdmin = asyncHandler(async (req: Request, res: Response) => {
-  const user = await User.findById(req.params.id);
+export const updateUserByAdmin = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user?.isAdmin) {
+    res.status(403);
+    throw new Error('Access denied, admin only');
+  }
 
+  const user = await User.findById(req.params.id);
   if (!user) {
     res.status(404);
     throw new Error('User not found');
   }
+
+  if (req.body.email && req.body.email !== user.email) {
+  const emailExists = await User.findOne({ email: req.body.email });
+  if (emailExists) {
+    res.status(400);
+    throw new Error("Email already in use");
+  }
+}
 
   user.name = req.body.name ?? user.name;
   user.email = req.body.email ?? user.email;
