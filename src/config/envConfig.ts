@@ -1,7 +1,15 @@
-import dotenv from 'dotenv';
-dotenv.config();
+import dotenv from "dotenv";
 
-const requiredEnvs = ['MONGO_URI', 'JWT_SECRET', 'STRIPE_SECRET_KEY'];
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
+}
+
+const requiredEnvs = [
+  "MONGO_URI",
+  "JWT_SECRET",
+  "STRIPE_SECRET_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+];
 
 requiredEnvs.forEach((env) => {
   if (!process.env[env]) {

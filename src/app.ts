@@ -1,4 +1,4 @@
-// import './config/envConfig';
+import './config/envConfig';
 
 import express, { Application, Request, Response } from "express";
 // import dotenv from "dotenv";
