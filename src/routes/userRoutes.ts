@@ -3,6 +3,7 @@ import {
   registerUser,
   getUsers,
   authUser,
+  logoutUser,
   getUserProfile,
   updateUserProfile,
   deleteUser,
@@ -28,6 +29,11 @@ router.post('/', validate(registerSchema), registerUser);
 // @desc    Login user & get token
 // @access  Public
 router.post('/login', validate(loginSchema), authUser);
+
+// @route   POST /api/users/logout
+// @desc    Logout user
+// @access  Public
+router.post('/logout', logoutUser);
 
 
 /* ======================================================

@@ -1,7 +1,7 @@
-import { NextFunction, Request, Response } from 'express';
-import User, { IUser } from '../models/userModel';
-import asyncHandler from '../middlewares/asyncHandler';
-import generateToken from '../utils/generateToken';
+import { Request, Response } from "express";
+import User, { IUser } from "../models/userModel";
+import asyncHandler from "../middlewares/asyncHandler";
+import generateToken from "../utils/generateToken";
 
 // Custom Request type
 export interface AuthRequest extends Request {
@@ -11,46 +11,44 @@ export interface AuthRequest extends Request {
 // =======================
 // Register User (First user becomes admin)
 // =======================
-export const registerUser = asyncHandler(async (req: Request, res: Response) => {
-  const { name, email, password, age } = req.body;
+export const registerUser = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { name, email, password, age } = req.body;
 
-  // 1️⃣ Check if user with same email exists
-  const userExists = await User.findOne({ email });
-  if (userExists) {
-    res.status(400);
-    throw new Error('User already exists');
-  }
+    // 1️⃣ Check if user with same email exists
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      res.status(400);
+      throw new Error("User already exists");
+    }
 
-  // 2️⃣ Check if this is the first user in the DB
-  const usersCount = await User.countDocuments({});
-  const isFirstUserAdmin = usersCount === 0; // agar DB empty, first user admin hoga
+    // 2️⃣ Check if this is the first user in the DB
+    const usersCount = await User.countDocuments({});
+    const isFirstUserAdmin = usersCount === 0; // agar DB empty, first user admin hoga
 
-  // 3️⃣ Create user
-  const user = await User.create({
-    name,
-    email,
-    password,
-    age,
-    isAdmin: isFirstUserAdmin, // pehla user admin, baaki false
-  });
+    // 3️⃣ Create user
+    const user = await User.create({
+      name,
+      email,
+      password,
+      age,
+      isAdmin: isFirstUserAdmin, // pehla user admin, baaki false
+    });
 
-  // 4️⃣ Response
-  res.status(201).json({
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-    age: user.age,
-    isAdmin: user.isAdmin,
-  });
-});
+    // 4️⃣ Response
+    res.status(201).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      age: user.age,
+      isAdmin: user.isAdmin,
+    });
+  },
+);
 
 // =======================
 // Login User
 // =======================
-import { Request, Response } from "express";
-import asyncHandler from "express-async-handler";
-import User from "../models/userModel";
-import generateToken from "../utils/generateToken";
 
 export const authUser = asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;
@@ -88,140 +86,168 @@ export const authUser = asyncHandler(async (req: Request, res: Response) => {
 // =======================
 // Get Own Profile
 // =======================
-export const getUserProfile = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.user) {
-    res.status(401);
-    throw new Error('Not authenticated');
-  }
+export const getUserProfile = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    if (!req.user) {
+      res.status(401);
+      throw new Error("Not authenticated");
+    }
 
-  res.json({
-    _id: req.user._id,
-    name: req.user.name,
-    email: req.user.email,
-    age: req.user.age,
-    isAdmin: req.user.isAdmin,
-  });
-});
+    res.json({
+      _id: req.user._id,
+      name: req.user.name,
+      email: req.user.email,
+      age: req.user.age,
+      isAdmin: req.user.isAdmin,
+    });
+  },
+);
 
 // =======================
 // Update Own Profile
 // =======================
-export const updateUserProfile = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.user) {
-    res.status(401);
-    throw new Error('Not authenticated');
-  }
+export const updateUserProfile = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    if (!req.user) {
+      res.status(401);
+      throw new Error("Not authenticated");
+    }
 
-  const user = await User.findById(req.user._id);
-  if (!user) {
-    res.status(404);
-    throw new Error('User not found');
-  }
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      res.status(404);
+      throw new Error("User not found");
+    }
 
-  // 🔥 ADD THIS BLOCK HERE
-if (req.body.email && req.body.email !== user.email) {
-  const emailExists = await User.findOne({ email: req.body.email });
-  if (emailExists) {
-    res.status(400);
-    throw new Error("Email already in use");
-  }
-}
+    // 🔥 ADD THIS BLOCK HERE
+    if (req.body.email && req.body.email !== user.email) {
+      const emailExists = await User.findOne({ email: req.body.email });
+      if (emailExists) {
+        res.status(400);
+        throw new Error("Email already in use");
+      }
+    }
 
-  user.name = req.body.name ?? user.name;
-  user.email = req.body.email ?? user.email;
-  user.age = req.body.age ?? user.age;
+    user.name = req.body.name ?? user.name;
+    user.email = req.body.email ?? user.email;
+    user.age = req.body.age ?? user.age;
 
-  if (req.body.password) {
-    user.password = req.body.password; // hashed via pre-save hook
-  }
+    if (req.body.password) {
+      user.password = req.body.password; // hashed via pre-save hook
+    }
 
-  // 🚫 Never allow normal user to change isAdmin
-  // user.isAdmin = req.body.isAdmin ?? user.isAdmin; // REMOVE
+    // 🚫 Never allow normal user to change isAdmin
+    // user.isAdmin = req.body.isAdmin ?? user.isAdmin; // REMOVE
 
-  const updatedUser = await user.save();
+    const updatedUser = await user.save();
 
-  res.json({
-    _id: updatedUser._id,
-    name: updatedUser.name,
-    email: updatedUser.email,
-    age: updatedUser.age,
-    isAdmin: updatedUser.isAdmin,
-  });
-});
-
-// =======================
-// Admin: Get All Users
-// =======================
-export const getUsers = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.user?.isAdmin) {
-    res.status(403);
-    throw new Error('Access denied, admin only');
-  }
-
-  const users = await User.find({}).select('-password');
-  res.json(users);
-});
-
-// =======================
-// Admin: Delete User
-// =======================
-export const deleteUser = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.user?.isAdmin) {
-    res.status(403);
-    throw new Error('Access denied, admin only');
-  }
-
-  const user = await User.findById(req.params.id);
-  if (!user) {
-    res.status(404);
-    throw new Error('User not found');
-  }
-
-  await user.deleteOne();
-  res.json({ message: 'User removed successfully' });
-});
-
-// =======================
-// Admin: Update User (can change isAdmin)
-// =======================
-export const updateUserByAdmin = asyncHandler(async (req: AuthRequest, res: Response) => {
-  if (!req.user?.isAdmin) {
-    res.status(403);
-    throw new Error('Access denied, admin only');
-  }
-
-  const user = await User.findById(req.params.id);
-  if (!user) {
-    res.status(404);
-    throw new Error('User not found');
-  }
-
-  if (req.body.email && req.body.email !== user.email) {
-  const emailExists = await User.findOne({ email: req.body.email });
-  if (emailExists) {
-    res.status(400);
-    throw new Error("Email already in use");
-  }
-}
-
-  user.name = req.body.name ?? user.name;
-  user.email = req.body.email ?? user.email;
-  user.age = req.body.age ?? user.age;
-
-  if (req.body.isAdmin !== undefined) {
-    user.isAdmin = req.body.isAdmin;
-  }
-
-  const updatedUser = await user.save();
-
-  res.json({
-    message: 'User updated successfully',
-    user: {
+    res.json({
       _id: updatedUser._id,
       name: updatedUser.name,
       email: updatedUser.email,
       age: updatedUser.age,
       isAdmin: updatedUser.isAdmin,
-    },
+    });
+  },
+);
+
+// =======================
+// Admin: Get All Users
+// =======================
+export const getUsers = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    if (!req.user?.isAdmin) {
+      res.status(403);
+      throw new Error("Access denied, admin only");
+    }
+
+    const users = await User.find({}).select("-password");
+    res.json(users);
+  },
+);
+
+// =======================
+// Admin: Delete User
+// =======================
+export const deleteUser = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    if (!req.user?.isAdmin) {
+      res.status(403);
+      throw new Error("Access denied, admin only");
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      res.status(404);
+      throw new Error("User not found");
+    }
+
+    if (user._id.toString() === req.user._id.toString()) {
+      res.status(400);
+      throw new Error("Admin cannot delete himself");
+    }
+
+    await user.deleteOne();
+    res.json({ message: "User removed successfully" });
+  },
+);
+
+// =======================
+// Admin: Update User (can change isAdmin)
+// =======================
+export const updateUserByAdmin = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    if (!req.user?.isAdmin) {
+      res.status(403);
+      throw new Error("Access denied, admin only");
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      res.status(404);
+      throw new Error("User not found");
+    }
+
+    if (req.body.email && req.body.email !== user.email) {
+      const emailExists = await User.findOne({ email: req.body.email });
+      if (emailExists) {
+        res.status(400);
+        throw new Error("Email already in use");
+      }
+    }
+
+    user.name = req.body.name ?? user.name;
+    user.email = req.body.email ?? user.email;
+    user.age = req.body.age ?? user.age;
+
+    if (req.body.isAdmin !== undefined) {
+      user.isAdmin = req.body.isAdmin;
+    }
+
+    const updatedUser = await user.save();
+
+    res.json({
+      message: "User updated successfully",
+      user: {
+        _id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        age: updatedUser.age,
+        isAdmin: updatedUser.isAdmin,
+      },
+    });
+  },
+);
+
+// @desc    Logout user / clear cookie
+// @route   POST /api/users/logout
+// @access  Public
+export const logoutUser = asyncHandler(async (req: Request, res: Response) => {
+  res.cookie("jwt", "", {
+    httpOnly: true,
+    expires: new Date(0),
+    sameSite: "strict",
+    secure: process.env.NODE_ENV !== "development",
   });
+  res.status(200).json({ message: "Logged out successfully" });
 });
