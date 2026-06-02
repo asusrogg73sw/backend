@@ -1,3 +1,4 @@
+// backend/models/orderModel.ts
 import { Schema, model, Document, Types } from "mongoose";
 
 interface IOrderItem {
@@ -32,6 +33,7 @@ interface IOrder extends Document {
   paidAt?: Date;
   isDelivered: boolean;
   deliveredAt?: Date;
+  isUserLocked: boolean; // 🔒 NEW PERSISTENCE FLAG SPECIFICATION
 }
 
 const orderSchema = new Schema<IOrder>(
@@ -65,6 +67,7 @@ const orderSchema = new Schema<IOrder>(
     paidAt: { type: Date },
     isDelivered: { type: Boolean, required: true, default: false },
     deliveredAt: { type: Date },
+    isUserLocked: { type: Boolean, required: true, default: false }, // 🔒 Default false rahega jab order create hoga
   },
   { timestamps: true },
 );

@@ -6,34 +6,19 @@ import Order from "../models/orderModel";
 import Product from "../models/productModel";
 import asyncHandler from "../middlewares/asyncHandler";
 
-/* =========================================================
-   Custom Request Interface
-   req.user ko TypeScript samjhane ke liye
-========================================================= */
 interface AuthRequest extends Request {
-  user?: any; // Better: apna IUser interface use karo
+  user?: any; 
 }
 
-/* =========================================================
-   @desc    Create New Order
-   @route   POST /api/orders
-   @access  Private
-
-   Features:
-   ✅ Race condition safe
-   ✅ Atomic stock update
-   ✅ Server-side price calculation
-========================================================= */
+// 1. Create New Order Controller
 export const addOrderItems = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    // MongoDB session start
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
       const { orderItems, shippingAddress, paymentMethod } = req.body;
 
-      // Check agar items exist nahi karte
       if (!orderItems || orderItems.length === 0) {
         res.status(400);
         throw new Error("No order items");
@@ -41,18 +26,14 @@ export const addOrderItems = asyncHandler(
 
       let itemsPrice = 0;
 
-      /* =====================================================
-         STOCK CHECK + STOCK UPDATE
-         Har product ka stock verify aur reduce hoga
-      ===================================================== */
       for (const item of orderItems) {
         const product = await Product.findOneAndUpdate(
           {
             _id: item.product,
-            countInStock: { $gte: item.qty }, // stock available hona chahiye
+            countInStock: { $gte: item.qty },
           },
           {
-            $inc: { countInStock: -item.qty }, // stock reduce
+            $inc: { countInStock: -item.qty },
           },
           {
             new: true,
@@ -60,90 +41,57 @@ export const addOrderItems = asyncHandler(
           }
         );
 
-        // Agar product nahi mila ya stock kam hai
         if (!product) {
           throw new Error("Not enough stock or product not found");
         }
 
-        // Total item price calculate
         itemsPrice += product.price * item.qty;
       }
 
-      /* =====================================================
-         SERVER SIDE PRICE CALCULATION
-      ===================================================== */
-      // 15% tax
       const taxPrice = Number((0.15 * itemsPrice).toFixed(2));
-
-      // Shipping free if items > 100
       const shippingPrice = itemsPrice > 100 ? 0 : 10;
+      const totalPrice = Number((itemsPrice + taxPrice + shippingPrice).toFixed(2));
 
-      // Final total
-      const totalPrice = Number(
-        (itemsPrice + taxPrice + shippingPrice).toFixed(2)
-      );
-
-      /* =====================================================
-         CREATE ORDER
-      ===================================================== */
       const order = new Order({
         orderItems,
         user: req.user._id,
         shippingAddress,
         paymentMethod,
-
         itemsPrice,
         taxPrice,
         shippingPrice,
         totalPrice,
+        isUserLocked: false // structural default safety state
       });
 
-      // Save order inside transaction
       const createdOrder = await order.save({ session });
 
-      // Commit transaction
       await session.commitTransaction();
       session.endSession();
 
       res.status(201).json(createdOrder);
     } catch (error: any) {
-      // Rollback if error occurs
       await session.abortTransaction();
       session.endSession();
-
       res.status(400);
       throw new Error(error.message || "Order creation failed");
     }
   }
 );
 
-/* =========================================================
-   @desc    Get Order By ID
-   @route   GET /api/orders/:id
-   @access  Private
-
-   User apna order dekh sakta hai
-   Admin kisi ka bhi order dekh sakta hai
-========================================================= */
+// 2. Get Order By ID Controller
 export const getOrderById = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const order = await Order.findById(req.params.id)
       .populate("user", "name email")
       .populate("orderItems.product", "name image price");
 
-    // Order not found
     if (!order) {
       res.status(404);
       throw new Error("Order not found");
     }
 
-    /* =====================================================
-       Authorization Check
-    ===================================================== */
-    if (
-      order.user._id.toString() !== req.user._id.toString() &&
-      !req.user.isAdmin
-    ) {
+    if (order.user._id.toString() !== req.user._id.toString() && !req.user.isAdmin) {
       res.status(401);
       throw new Error("Not authorized");
     }
@@ -152,26 +100,19 @@ export const getOrderById = asyncHandler(
   }
 );
 
-/* =========================================================
-   @desc    Update Order To Paid
-   @route   PUT /api/orders/:id/pay
-   @access  Private
-========================================================= */
+// 3. Update Order To Paid Controller
 export const updateOrderToPaid = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const order = await Order.findById(req.params.id);
 
-    // Order not found
     if (!order) {
       res.status(404);
       throw new Error("Order not found");
     }
 
-    // Mark as paid
     order.isPaid = true;
     order.paidAt = new Date();
 
-    // Save payment result info
     order.paymentResult = {
       id: req.body.id,
       status: req.body.status,
@@ -180,116 +121,98 @@ export const updateOrderToPaid = asyncHandler(
     };
 
     const updatedOrder = await order.save();
-
     res.json(updatedOrder);
   }
 );
 
-/* =========================================================
-   @desc    Get Logged In User Orders
-   @route   GET /api/orders/myorders
-   @access  Private
-
-   Current user ke saare orders
-========================================================= */
+// 4. Get Logged In User Orders Controller
 export const getMyOrders = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const orders = await Order.find({
-      user: req.user._id,
-    }).sort({ createdAt: -1 });
-
+    const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
     res.json(orders);
   }
 );
 
-/* =========================================================
-   @desc    Get All Orders
-   @route   GET /api/orders
-   @access  Private/Admin
-
-   Admin saare orders dekh sakta hai
-========================================================= */
+// 5. Get All Orders (Admin Only)
 export const getOrders = asyncHandler(
   async (_req: AuthRequest, res: Response) => {
-    // Populate user id + name
-    const orders = await Order.find({})
-      .populate("user", "id name")
-      .sort({ createdAt: -1 });
-
+    const orders = await Order.find({}).populate("user", "id name").sort({ createdAt: -1 });
     res.json(orders);
   }
 );
 
-/* =========================================================
-   @desc    Update Order To Delivered
-   @route   PUT /api/orders/:id/deliver
-   @access  Private/Admin
-
-   Admin order ko delivered mark karega
-========================================================= */
+// 6. Update Order To Delivered (Admin Only)
 export const updateOrderToDelivered = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const order = await Order.findById(req.params.id);
 
-    // Order not found
     if (!order) {
       res.status(404);
       throw new Error("Order not found");
     }
 
-    // Mark delivered
     order.isDelivered = true;
-
-    // Delivery time save
     order.deliveredAt = new Date();
 
+    const updatedOrder = await order.save();
+    res.json(updatedOrder);
+  }
+);
+
+// 🔒 1. Toggle Lock State (Chahy Paid ho ya Unpaid, user toggle kr saky)
+export const toggleOrderLock = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      res.status(404);
+      throw new Error("Order not found");
+    }
+
+    // Security Check: Sirf wahi user lock/unlock kr saky jis ka order hai
+    if (order.user.toString() !== req.user._id.toString()) {
+      res.status(401);
+      throw new Error("Not authorized to manage this order lock configuration");
+    }
+
+    // Ab koi 'isPaid' check nahi hai. User has full control!
+    order.isUserLocked = !order.isUserLocked;
     const updatedOrder = await order.save();
 
     res.json(updatedOrder);
   }
 );
 
-/* =========================================================
-   🚀 NEW FIX: Cancel/Delete Unpaid Order Controller
-   @desc    Delete/Cancel An Unpaid Order & Restore Inventory Stock
-   @route   DELETE /api/orders/:id
-   @access  Private
-========================================================= */
+// 🗑️ 2. Delete / Cancel Any Order (Paid or Unpaid)
 export const deleteOrder = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const order = await Order.findById(req.params.id);
 
-    // 1. Validation guard: Order exist karna chahiye
     if (!order) {
       res.status(404);
       throw new Error("Order not found");
     }
 
-    // 2. Authorization check: Sirf wahi user cancel kar sake jis ka order hai (ya admin)
+    // Authorization Check
     if (order.user.toString() !== req.user._id.toString() && !req.user.isAdmin) {
       res.status(401);
       throw new Error("Not authorized to cancel this order");
     }
 
-    // 3. Security Check: Agar order already paid hai toh delete block kar do
-    if (order.isPaid) {
+    // 🚨 STRICT LOCK CHECK: Agar user ne manually lock on kiya hua hai, toh delete nahi hoga
+    if (order.isUserLocked) {
       res.status(400);
-      throw new Error("Paid orders cannot be deleted or canceled");
+      throw new Error("Order is locked. Please unlock it before deleting.");
     }
 
-    /* =====================================================
-       STOCK RESTORATION LOGIC 🔄
-       Order cancel hone par product stock wapis barhana hoga
-    ===================================================== */
+    // Agar stock restore krna chahein (mostly unpaid orders k liye zaroori hota hai, pr paid pr bhi safe side run ho ga)
     for (const item of order.orderItems) {
       await Product.findByIdAndUpdate(item.product, {
-        $inc: { countInStock: item.qty }, // Stock safely increased back to inventory
+        $inc: { countInStock: item.qty },
       });
     }
 
-    // 4. Document deletion fire ki database se
     await order.deleteOne();
-
-    res.json({ message: "Order successfully canceled and stock restored" });
+    res.json({ message: "Order successfully deleted and stock adjusted" });
   }
 );
